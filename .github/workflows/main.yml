@@ -1,0 +1,48 @@
+name: Build and Deploy to AKS
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AZURE_CONTAINER_REGISTRY: acrkmunoz2024
+  CONTAINER_NAME: myhealth-web
+  RESOURCE_GROUP: rg-aks-lab-kmunoz
+  CLUSTER_NAME: aks-cluster-kmunoz
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up .NET Core
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '6.0.x'
+    
+    - name: Build with dotnet
+      run: dotnet build --configuration Release
+      working-directory: ./src/MyHealth.API
+    
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Build and push Docker image
+      run: |
+        az acr build --registry ${{ env.AZURE_CONTAINER_REGISTRY }} --image ${{ env.CONTAINER_NAME }}:${{ github.sha }} .
+      working-directory: ./src/MyHealth.Web
+    
+    - name: Deploy to AKS
+      uses: azure/k8s-deploy@v1
+      with:
+        manifests: |
+          mhc-aks.yaml
+        images: |
+          ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.CONTAINER_NAME }}:${{ github.sha }}
+        kubeconfig: ${{ secrets.KUBE_CONFIG }}
