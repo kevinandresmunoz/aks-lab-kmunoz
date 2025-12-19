@@ -9,7 +9,6 @@ env:
   AZURE_CONTAINER_REGISTRY: acrkmunoz2024
   RESOURCE_GROUP: rg-aks-lab-kmunoz
   CLUSTER_NAME: aks-cluster-kmunoz
-  IMAGE_NAME: myhealth.web
 
 jobs:
   build-and-deploy:
@@ -23,18 +22,24 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     
-    - name: Get AKS credentials
-      run: |
-        az aks get-credentials --resource-group ${{ env.RESOURCE_GROUP }} --name ${{ env.CLUSTER_NAME }}
-    
     - name: Login to ACR
       run: |
         az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
     
-    - name: Build and push Docker image
+    - name: Build with Docker Compose
       run: |
-        docker build -t ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} -f src/MyHealth.Web/Dockerfile .
-        docker push ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        export DOCKER_BUILD_SOURCE=""
+        docker-compose -f docker-compose.ci.build.yml run ci-build
+        docker-compose -f docker-compose.yml build
+    
+    - name: Tag and Push Docker image
+      run: |
+        docker tag myhealth_web ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/myhealth.web:${{ github.sha }}
+        docker push ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/myhealth.web:${{ github.sha }}
+    
+    - name: Get AKS credentials
+      run: |
+        az aks get-credentials --resource-group ${{ env.RESOURCE_GROUP }} --name ${{ env.CLUSTER_NAME }}
     
     - name: Update Kubernetes manifest
       run: |
@@ -45,4 +50,3 @@ jobs:
       run: |
         kubectl apply -f mhc-aks.yaml
         kubectl rollout status deployment/mhc-front
-
